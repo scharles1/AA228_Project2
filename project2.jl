@@ -26,8 +26,47 @@ function computePolicy()
     i2names = getDict(data)
     Pi = Array{Int64,1}(kNumStates)
     #QLearning(data, Pi)
-    MaximumLikelihood(data, Pi)
+    #MaximumLikelihood(data, Pi)
+    ValueIteration(data, Pi)
     write_Policy(Pi)
+end
+
+############################################################
+# Function: ValueIteration
+#
+# Description:
+############################################################
+function ValueIteration(data::DataFrame, Pi::Array{Int64,1})
+	U = spzeros(kNumStates)
+	Q = spzeros(kNumStates, kNumActions)
+	N = spzeros(kNumStates, (kNumActions*kNumStates))
+	Rho = spzeros(kNumStates, kNumActions)
+	T = spzeros(kNumStates, (kNumActions*kNumStates))
+	R = spzeros(kNumStates, kNumActions)
+	
+	for k = 1:kIterations
+		@printf("%d\n",k)
+		for i = 1:length(data[1])
+			s = data[i,1]
+			a = data[i,2]
+			r = data[i,3]
+			sp = data[i,4]
+			s_a_index = ((s-1)*kNumActions + a)
+			N[sp,s_a_index] = N[sp,s_a_index] + 1
+			Rho[s,a] = Rho[s,a] + r
+			n2 = sum(N[:,s_a_index])
+			R[s,a] = Rho[s,a]/n2
+			T[sp, s_a_index] = N[sp,s_a_index]/n2
+			Q[s,a] = R[s,a] + kDiscountFactor*sum(T[:,s_a_index])*maximum(U[sp,:])
+		end
+		for s = 1:kNumStates
+			U[s] = indmax(Q[s,:])
+		end
+	end
+
+	for s = 1:kNumStates
+        Pi[s] = U[s]
+    end
 end
 
 ############################################################
@@ -65,6 +104,7 @@ function MaximumLikelihood(data::DataFrame, Pi::Array{Int64,1})
 	T = spzeros(kNumStates, (kNumActions*kNumStates))
 	
 	for k = 1:kIterations
+	@printf("%d\n",k)
 	for i = 1:length(data[1])
 		s = data[i,1]
 		a = data[i,2]
@@ -85,6 +125,18 @@ function MaximumLikelihood(data::DataFrame, Pi::Array{Int64,1})
     end
 end
 
+############################################################
+# Function: PrioritizedSweeping
+#
+# Description:
+############################################################
+function PrioritizedSweeping(data::DataFrame, Pi::Array{Int64,1})
+	U = spzeros(kNumActions)
+	pq = PriorityQueue{Int64,Float64}()
+	while(!isempty(pq))
+
+	end
+end
 
 ############################################################
 # Function: getDict(data)
@@ -98,11 +150,11 @@ function getDict(data::DataFrame)
     return Dict(keys[i]=>Names[i] for i = 1:l)
 end
 
-inputfilename = "large.csv"
-outputfilename = "large.policy"
-const kNumActions =  125 #7 #4   
-const kNumStates = 10101010 #50000 #100
+inputfilename = "small.csv"
+outputfilename = "small.policy"
+const kNumActions = 4 #7  #125   
+const kNumStates = 100 #50000 #10101010 
 const kDiscountFactor = 0.95
 const kLearnFactor = 0.5
-const kIterations = 100
+const kIterations = 1000
 computePolicy()
