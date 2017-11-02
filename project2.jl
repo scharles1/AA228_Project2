@@ -8,10 +8,10 @@ using Iterators
 #
 # Description: 
 ############################################################
-function write_Policy(dag::DiGraph, policy::Vector{Vector{Int64}})
-    open(filename, "w") do io
-        for edge in edges(dag)
-            @printf(io, "%s, %s\n", idx2names[src(edge)], idx2names[dst(edge)])
+function write_Policy(policy::Array{Int64,1})
+    open(outputfilename, "w") do io
+        for s= 1:kNumStates
+            @printf(io, "%d\n", policy[s])
         end
     end
 end
@@ -21,87 +21,70 @@ end
 #
 # Description:
 ############################################################
-function computePolicy(infile::String, outfile::String)   
+function computePolicy()   
     data = readtable(inputfilename)
     i2names = getDict(data)
-    N2 = Array{Int64}(kNumStates, kNumActions)
-    N3 = Array{Int64}(kNumStates, kNumActions, kNumStates)
-    P = Array{Int64}(kNumStates, kNumActions)
-    T = Array{Float64}(kNumStates, kNumStates, kNumActions)
+    Pi = Array{Int64,1}(kNumStates)
+    #QLearning(data, Pi)
+    MaximumLikelihood(data, Pi)
+    write_Policy(Pi)
+end
 
-    computePmatrix(data, P)
-    computeN2matrix(data, N2)
-    computeN3matrix(data, N3)
-    R = P./N2
-    for sp = 1:kNumStates
-    	T[sp,:,:] = N3[:,:,sp]./N2
+############################################################
+# Function: QLearning
+#
+# Description:
+############################################################
+function QLearning(data::DataFrame, Pi::Array{Int64,1})
+	Q = zeros(kNumStates, kNumActions)
+	
+	for k = 1:kIterations
+	for i = 1:length(data[1])
+		s = data[i,1]
+		a = data[i,2]
+		r = data[i,3]
+		sp = data[i,4]
+		Q[s,a] = Q[s,a] + kLearnFactor*(r + kDiscountFactor*maximum(Q[sp,:]) - Q[s,a])
+	end
+	end
+
+	for s = 1:kNumStates
+        Pi[s] = indmax(Q[s,:])
     end
-    
 end
 
 ############################################################
-# Function: estimateReward(data)
-#
-# Description: estimates the reward runction R(s,a)
-############################################################
-function estimateRewards(data::DataFrame, )
-
-
-end
-
-############################################################
-# Function: estimateReward(data)
-#
-# Description: estimates the transition runction T(s'|s,a)
-############################################################
-function estimateTransitions(data::DataFrame)
-
-
-end
-
-############################################################
-# Function: valueIteration(data)
-#
-# Description: Runs value iteration given R(s,a) and T(s'|s,a)
-############################################################
-function valueIteration(data::DataFrame)
-
-
-end
-
-############################################################
-# Function: computeN2matrix(data)
+# Function: MaximumLikelihood
 #
 # Description:
 ############################################################
-function computeN2matrix(data::DataFrame, N2::Array{Int64})
-	for s = 1:kNumStates, a = 1:kNumActions
-		N2[s,a] = length(find((data[1] .== s) & (data[2] .== a)))
+function MaximumLikelihood(data::DataFrame, Pi::Array{Int64,1})
+	Q = spzeros(kNumStates, kNumActions)
+	N = spzeros(kNumStates, (kNumActions*kNumStates))
+	Rho = spzeros(kNumStates, kNumActions)
+	T = spzeros(kNumStates, (kNumActions*kNumStates))
+	
+	for k = 1:kIterations
+	for i = 1:length(data[1])
+		s = data[i,1]
+		a = data[i,2]
+		r = data[i,3]
+		sp = data[i,4]
+		s_a_index = ((s-1)*kNumActions + a)
+		N[sp,s_a_index] = N[sp,s_a_index] + 1
+		Rho[s,a] = Rho[s,a] + r
+		n2 = sum(N[:,s_a_index])
+		R = Rho[s,a]/n2
+		T[sp, s_a_index] = N[sp,s_a_index]/n2
+		Q[s,a] = R + kDiscountFactor*sum(T[:,s_a_index])*maximum(Q[sp,:])
 	end
+	end
+
+	for s = 1:kNumStates
+        Pi[s] = indmax(Q[s,:])
+    end
 end
 
-############################################################
-# Function: computeN3matrix(data)
-#
-# Description:
-############################################################
-function computeN3matrix(data::DataFrame, N3::Array{Int64})
-	for s = 1:kNumStates, a = 1:kNumActions, sp = 1:kNumStates
-		N3[s,a,sp] = length(find((data[1] .== s) & (data[2] .== a) & (data[4] .== sp)))
-	end
-end
-
-############################################################
-# Function: computePmatrix(data)
-#
-# Description:
-############################################################
-function computePmatrix(data::DataFrame, P::Array{Int64})
-	for s = 1:kNumStates, a = 1:kNumActions
-		indices = find((data[1] .== s) & (data[2] .== a))
-		P[s,a] = sum(data[indices,3])
-	end
-end
 
 ############################################################
 # Function: getDict(data)
@@ -115,10 +98,11 @@ function getDict(data::DataFrame)
     return Dict(keys[i]=>Names[i] for i = 1:l)
 end
 
-
-inputfilename = "small.csv"
-outputfilename = "small.policy"
-const kNumActions = 4
-const kNumStates = 100
+inputfilename = "large.csv"
+outputfilename = "large.policy"
+const kNumActions =  125 #7 #4   
+const kNumStates = 10101010 #50000 #100
 const kDiscountFactor = 0.95
-computePolicy(inputfilename, outputfilename)
+const kLearnFactor = 0.5
+const kIterations = 100
+computePolicy()
